@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from predictor import (
     predict_category,
@@ -6,6 +7,20 @@ from predictor import (
     recommend_assignee,
     status_mapping
 )
+
+from database import (
+    create_database,
+    save_task,
+    get_tasks,
+    get_statistics
+)
+
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
+
+create_database()
 
 
 # ============================================================
@@ -23,459 +38,656 @@ st.set_page_config(
 
 
 # ============================================================
-# CUSTOM TITLE
+# SIDEBAR
 # ============================================================
 
-st.title(
-    "🤖 AI-Powered Task Management System"
+st.sidebar.title(
+    "🤖 AI Task Manager"
 )
 
-st.write(
-    "Automatically classify tasks, predict priority "
-    "and recommend the best team member."
-)
+page = st.sidebar.radio(
 
+    "Navigation",
 
-st.divider()
-
-
-# ============================================================
-# CREATE TASK SECTION
-# ============================================================
-
-st.header(
-    "📝 Create New Task"
+    [
+        "🏠 Task Analyzer",
+        "📊 Dashboard",
+        "📋 Task History"
+    ]
 )
 
 
 # ============================================================
-# TASK DESCRIPTION
+# TASK ANALYZER
 # ============================================================
 
-task_description = st.text_area(
+if page == "🏠 Task Analyzer":
 
-    "Task Description",
-
-    placeholder=(
-        "Example: Fix database security vulnerability"
-    ),
-
-    height=120
-)
-
-
-# ============================================================
-# INPUT COLUMNS
-# ============================================================
-
-col1, col2 = st.columns(2)
-
-
-# ============================================================
-# ESTIMATED HOURS
-# ============================================================
-
-with col1:
-
-    estimated_hours = st.number_input(
-
-        "Estimated Hours",
-
-        min_value=1.0,
-
-        max_value=1000.0,
-
-        value=5.0,
-
-        step=1.0
+    st.title(
+        "🤖 AI-Powered Task Management System"
     )
 
-
-# ============================================================
-# COMPLETED HOURS
-# ============================================================
-
-with col2:
-
-    completed_hours = st.number_input(
-
-        "Completed Hours",
-
-        min_value=0.0,
-
-        max_value=1000.0,
-
-        value=0.0,
-
-        step=1.0
+    st.write(
+        "Automatically classify tasks, predict priority "
+        "and recommend the best team member."
     )
 
+    st.divider()
 
-# ============================================================
-# SECOND ROW
-# ============================================================
-
-col3, col4 = st.columns(2)
-
-
-# ============================================================
-# DAYS TO DEADLINE
-# ============================================================
-
-with col3:
-
-    days_to_deadline = st.number_input(
-
-        "Days To Deadline",
-
-        min_value=0,
-
-        max_value=365,
-
-        value=7,
-
-        step=1
+    st.header(
+        "📝 Create New Task"
     )
 
-
-# ============================================================
-# STATUS
-# ============================================================
-
-with col4:
-
-    # Extract status names from mapping
-
-    status_options = []
-
-    for key, value in status_mapping.items():
-
-        if isinstance(key, str):
-
-            status_options.append(key)
-
-        elif isinstance(value, str):
-
-            status_options.append(value)
-
-
-    # Remove duplicates
-
-    status_options = list(
-        dict.fromkeys(status_options)
-    )
-
-
-    # Fallback if mapping format is unexpected
-
-    if not status_options:
-
-        status_options = [
-            "Not Started",
-            "In Progress",
-            "Completed"
-        ]
-
-
-    status = st.selectbox(
-
-        "Task Status",
-
-        status_options
-    )
-
-
-# ============================================================
-# ANALYZE TASK BUTTON
-# ============================================================
-
-st.divider()
-
-
-analyze_button = st.button(
-
-    "🚀 Analyze Task",
-
-    use_container_width=True,
-
-    type="primary"
-)
-
-
-# ============================================================
-# ANALYZE TASK
-# ============================================================
-
-if analyze_button:
 
     # --------------------------------------------------------
-    # Validate task description
+    # TASK DESCRIPTION
     # --------------------------------------------------------
 
-    if not task_description.strip():
+    task_description = st.text_area(
 
-        st.warning(
-            "⚠️ Please enter a task description."
+        "Task Description",
+
+        placeholder=(
+            "Example: Fix database security vulnerability"
+        ),
+
+        height=120
+    )
+
+
+    # --------------------------------------------------------
+    # INPUTS
+    # --------------------------------------------------------
+
+    col1, col2 = st.columns(2)
+
+
+    with col1:
+
+        estimated_hours = st.number_input(
+
+            "Estimated Hours",
+
+            min_value=1.0,
+
+            max_value=1000.0,
+
+            value=5.0,
+
+            step=1.0
         )
 
-        st.stop()
+
+    with col2:
+
+        completed_hours = st.number_input(
+
+            "Completed Hours",
+
+            min_value=0.0,
+
+            max_value=1000.0,
+
+            value=0.0,
+
+            step=1.0
+        )
 
 
-    # --------------------------------------------------------
-    # Calculate remaining hours
-    # --------------------------------------------------------
-
-    remaining_hours = (
-
-        estimated_hours
-
-        -
-
-        completed_hours
-
-    )
+    col3, col4 = st.columns(2)
 
 
-    # Prevent negative remaining hours
+    with col3:
 
-    if remaining_hours < 0:
+        days_to_deadline = st.number_input(
 
-        remaining_hours = 0
+            "Days To Deadline",
+
+            min_value=0,
+
+            max_value=365,
+
+            value=7,
+
+            step=1
+        )
 
 
-    # --------------------------------------------------------
-    # STEP 1: CATEGORY PREDICTION
-    # --------------------------------------------------------
+    with col4:
 
-    with st.spinner(
-        "Analyzing task category..."
-    ):
+        status_options = []
 
-        category = predict_category(
-            task_description
+        for key, value in status_mapping.items():
+
+            if isinstance(key, str):
+
+                status_options.append(key)
+
+            elif isinstance(value, str):
+
+                status_options.append(value)
+
+
+        status_options = list(
+            dict.fromkeys(status_options)
+        )
+
+
+        if not status_options:
+
+            status_options = [
+                "Pending",
+                "In Progress",
+                "Completed"
+            ]
+
+
+        status = st.selectbox(
+
+            "Task Status",
+
+            status_options
         )
 
 
     # --------------------------------------------------------
-    # STEP 2: PRIORITY PREDICTION
+    # ANALYZE
     # --------------------------------------------------------
 
-    with st.spinner(
-        "Predicting task priority..."
+    st.divider()
+
+
+    if st.button(
+
+        "🚀 Analyze Task",
+
+        use_container_width=True,
+
+        type="primary"
+
     ):
 
-        priority = predict_priority(
+        if not task_description.strip():
+
+            st.warning(
+                "Please enter a task description."
+            )
+
+            st.stop()
+
+
+        # ----------------------------------------------------
+        # REMAINING HOURS
+        # ----------------------------------------------------
+
+        remaining_hours = (
+
+            estimated_hours
+            -
+            completed_hours
+
+        )
+
+        if remaining_hours < 0:
+
+            remaining_hours = 0
+
+
+        # ----------------------------------------------------
+        # CATEGORY
+        # ----------------------------------------------------
+
+        with st.spinner(
+            "Analyzing task category..."
+        ):
+
+            category = predict_category(
+                task_description
+            )
+
+
+        # ----------------------------------------------------
+        # PRIORITY
+        # ----------------------------------------------------
+
+        with st.spinner(
+            "Predicting task priority..."
+        ):
+
+            priority = predict_priority(
+
+                estimated_hours,
+
+                completed_hours,
+
+                status,
+
+                remaining_hours,
+
+                days_to_deadline,
+
+                category
+            )
+
+
+        # ----------------------------------------------------
+        # ASSIGNEE
+        # ----------------------------------------------------
+
+        with st.spinner(
+            "Finding the best team member..."
+        ):
+
+            assignee = recommend_assignee(
+
+                estimated_hours
+            )
+
+
+        # ----------------------------------------------------
+        # SAVE TASK
+        # ----------------------------------------------------
+
+        save_task(
+
+            task_description,
+
+            category,
+
+            priority,
 
             estimated_hours,
 
             completed_hours,
 
-            status,
-
             remaining_hours,
 
             days_to_deadline,
 
-            category
+            status,
 
+            assignee
         )
 
 
-    # --------------------------------------------------------
-    # STEP 3: WORKLOAD BALANCING
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # SUCCESS
+        # ----------------------------------------------------
 
-    with st.spinner(
-        "Finding the best team member..."
-    ):
-
-        assignee = recommend_assignee(
-
-            estimated_hours
-
+        st.success(
+            "✅ Task analyzed and saved successfully!"
         )
 
 
-    # ========================================================
-    # RESULTS
-    # ========================================================
+        st.divider()
 
-    st.success(
-        "✅ Task analyzed successfully!"
+
+        # ----------------------------------------------------
+        # RESULTS
+        # ----------------------------------------------------
+
+        st.header(
+            "📊 AI Analysis Results"
+        )
+
+
+        result1, result2, result3 = st.columns(3)
+
+
+        with result1:
+
+            st.subheader(
+                "📂 Category"
+            )
+
+            st.info(
+                str(category)
+            )
+
+
+        with result2:
+
+            st.subheader(
+                "⚡ Priority"
+            )
+
+            if str(priority).lower() == "critical":
+
+                st.error(
+                    str(priority)
+                )
+
+            elif str(priority).lower() == "high":
+
+                st.warning(
+                    str(priority)
+                )
+
+            else:
+
+                st.success(
+                    str(priority)
+                )
+
+
+        with result3:
+
+            st.subheader(
+                "👤 Recommended Assignee"
+            )
+
+            st.success(
+                str(assignee)
+            )
+
+
+        # ----------------------------------------------------
+        # SUMMARY
+        # ----------------------------------------------------
+
+        st.divider()
+
+        st.header(
+            "📋 Task Summary"
+        )
+
+
+        summary1, summary2 = st.columns(2)
+
+
+        with summary1:
+
+            st.write(
+                f"**Task:** {task_description}"
+            )
+
+            st.write(
+                f"**Category:** {category}"
+            )
+
+            st.write(
+                f"**Priority:** {priority}"
+            )
+
+
+        with summary2:
+
+            st.write(
+                f"**Estimated Hours:** {estimated_hours}"
+            )
+
+            st.write(
+                f"**Completed Hours:** {completed_hours}"
+            )
+
+            st.write(
+                f"**Remaining Hours:** {remaining_hours}"
+            )
+
+            st.write(
+                f"**Days To Deadline:** {days_to_deadline}"
+            )
+
+            st.write(
+                f"**Status:** {status}"
+            )
+
+            st.write(
+                f"**Assigned To:** {assignee}"
+            )
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+elif page == "📊 Dashboard":
+
+    st.title(
+        "📊 Task Management Dashboard"
     )
+
+    st.write(
+        "Overview of analyzed tasks and team workload."
+    )
+
+
+    (
+        total_tasks,
+        priority_data,
+        category_data,
+        assignee_data
+    ) = get_statistics()
+
+
+    # --------------------------------------------------------
+    # METRICS
+    # --------------------------------------------------------
+
+    col1, col2, col3, col4 = st.columns(4)
+
+
+    with col1:
+
+        st.metric(
+            "Total Tasks",
+            int(total_tasks)
+        )
+
+
+    with col2:
+
+        high_count = 0
+
+        for _, row in priority_data.iterrows():
+
+            if str(row["priority"]).lower() in [
+                "high",
+                "critical"
+            ]:
+
+                high_count += int(
+                    row["count"]
+                )
+
+        st.metric(
+            "High/Critical",
+            high_count
+        )
+
+
+    with col3:
+
+        categories = len(
+            category_data
+        )
+
+        st.metric(
+            "Categories",
+            categories
+        )
+
+
+    with col4:
+
+        team_members = len(
+            assignee_data
+        )
+
+        st.metric(
+            "Team Members",
+            team_members
+        )
 
 
     st.divider()
 
 
-    st.header(
-        "📊 AI Analysis Results"
-    )
-
-
     # --------------------------------------------------------
-    # RESULT COLUMNS
+    # CHARTS
     # --------------------------------------------------------
 
-    result1, result2, result3 = st.columns(3)
+    chart1, chart2 = st.columns(2)
 
 
-    # --------------------------------------------------------
-    # CATEGORY
-    # --------------------------------------------------------
-
-    with result1:
+    with chart1:
 
         st.subheader(
-            "📂 Category"
+            "⚡ Priority Distribution"
         )
 
-        st.info(
-            str(category)
-        )
+        if not priority_data.empty:
 
-
-    # --------------------------------------------------------
-    # PRIORITY
-    # --------------------------------------------------------
-
-    with result2:
-
-        st.subheader(
-            "⚡ Priority"
-        )
-
-        priority_text = str(
-            priority
-        )
-
-        if priority_text.lower() == "critical":
-
-            st.error(
-                priority_text
-            )
-
-        elif priority_text.lower() == "high":
-
-            st.warning(
-                priority_text
+            st.bar_chart(
+                priority_data.set_index(
+                    "priority"
+                )
             )
 
         else:
 
-            st.success(
-                priority_text
+            st.info(
+                "No task data available yet."
             )
 
 
-    # --------------------------------------------------------
-    # ASSIGNEE
-    # --------------------------------------------------------
-
-    with result3:
+    with chart2:
 
         st.subheader(
-            "👤 Recommended Assignee"
+            "📂 Category Distribution"
         )
 
-        st.success(
-            str(assignee)
-        )
+        if not category_data.empty:
 
+            st.bar_chart(
+                category_data.set_index(
+                    "category"
+                )
+            )
 
-    # ========================================================
-    # TASK SUMMARY
-    # ========================================================
+        else:
+
+            st.info(
+                "No task data available yet."
+            )
+
 
     st.divider()
 
 
-    st.header(
-        "📋 Task Summary"
+    st.subheader(
+        "👥 Tasks Assigned to Team Members"
     )
 
 
-    summary_col1, summary_col2 = st.columns(2)
+    if not assignee_data.empty:
 
+        st.bar_chart(
 
-    with summary_col1:
-
-        st.write(
-            "**Task Description:**"
+            assignee_data.set_index(
+                "assigned_to"
+            )
         )
 
-        st.write(
-            task_description
-        )
+    else:
 
-        st.write(
-            f"**Category:** {category}"
-        )
-
-        st.write(
-            f"**Priority:** {priority}"
+        st.info(
+            "No assignment data available yet."
         )
 
 
-    with summary_col2:
+# ============================================================
+# TASK HISTORY
+# ============================================================
 
-        st.write(
-            f"**Estimated Hours:** "
-            f"{estimated_hours}"
-        )
+elif page == "📋 Task History":
 
-        st.write(
-            f"**Completed Hours:** "
-            f"{completed_hours}"
-        )
-
-        st.write(
-            f"**Remaining Hours:** "
-            f"{remaining_hours}"
-        )
-
-        st.write(
-            f"**Days To Deadline:** "
-            f"{days_to_deadline}"
-        )
-
-        st.write(
-            f"**Status:** "
-            f"{status}"
-        )
-
-        st.write(
-            f"**Recommended Assignee:** "
-            f"{assignee}"
-        )
-
-
-    # ========================================================
-    # SYSTEM FLOW
-    # ========================================================
-
-    st.divider()
-
-
-    st.header(
-        "🔄 AI Decision Pipeline"
+    st.title(
+        "📋 Task History"
     )
-
 
     st.write(
-        f"""
-        **Task Description**
-        ↓
-        **TF-IDF + Classifier**
-        ↓
-        **Category: {category}**
-        ↓
-        **Priority Prediction Model**
-        ↓
-        **Priority: {priority}**
-        ↓
-        **Workload Balancer**
-        ↓
-        **Recommended Assignee: {assignee}**
-        """
+        "Previously analyzed tasks."
     )
+
+
+    tasks = get_tasks()
+
+
+    if tasks.empty:
+
+        st.info(
+            "No tasks have been analyzed yet."
+        )
+
+    else:
+
+        # Remove database ID for display
+
+        display_tasks = tasks.drop(
+            columns=["id"],
+            errors="ignore"
+        )
+
+
+        st.dataframe(
+
+            display_tasks,
+
+            use_container_width=True,
+
+            hide_index=True
+        )
+
+
+        st.divider()
+
+
+        st.subheader(
+            "🔎 Filter Tasks"
+        )
+
+
+        # ----------------------------------------------------
+        # PRIORITY FILTER
+        # ----------------------------------------------------
+
+        priorities = [
+
+            "All"
+        ] + sorted(
+
+            display_tasks[
+                "priority"
+            ].dropna().unique().tolist()
+        )
+
+
+        selected_priority = st.selectbox(
+
+            "Priority",
+
+            priorities
+        )
+
+
+        filtered_tasks = display_tasks.copy()
+
+
+        if selected_priority != "All":
+
+            filtered_tasks = filtered_tasks[
+                filtered_tasks[
+                    "priority"
+                ] == selected_priority
+            ]
+
+
+        st.dataframe(
+
+            filtered_tasks,
+
+            use_container_width=True,
+
+            hide_index=True
+        )

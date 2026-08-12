@@ -1,7 +1,11 @@
 import os
 import joblib
 import pandas as pd
+# ============================================================
+# DYNAMIC TEAM WORKLOAD
+# ============================================================
 
+dynamic_workload = None
 
 # ============================================================
 # PATH CONFIGURATION
@@ -347,32 +351,298 @@ def get_workload():
 # ============================================================
 # ASSIGNEE RECOMMENDATION
 # ============================================================
-
-def recommend_assignee(
-    estimated_hours=5
-):
+def recommend_assignee(estimated_hours):
     """
-    Recommend the team member with the lowest
-    projected workload.
+    Recommend the team member with the lowest current workload.
+
+    The workload is initialized from the dataset once and then
+    updated whenever a new task is assigned.
     """
 
-    workload = get_workload()
+    global dynamic_workload
 
+    import os
+    import pandas as pd
 
-    # --------------------------------------------------------
-    # Project workload after assigning new task
-    # --------------------------------------------------------
+    # ========================================================
+    # FIND DATASET
+    # ========================================================
 
-    workload["Projected_Workload"] = (
-
-        workload["Remaining_Hours"]
-
-        +
-
-        estimated_hours
-
+    base_dir = os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
     )
 
+    dataset_path = os.path.join(
+        base_dir,
+        "data",
+        "raw",
+        "task_dataset.csv"
+    )
+
+    # ========================================================
+    # INITIALIZE WORKLOAD ONLY ONCE
+    # ========================================================
+
+    if dynamic_workload is None:
+
+        df = pd.read_csv(dataset_path)
+
+        # Make sure required column exists
+        if "Assigned_To" not in df.columns:
+            return "Unassigned"
+
+        # Clean names
+        df["Assigned_To"] = (
+            df["Assigned_To"]
+            .astype(str)
+            .str.strip()
+        )
+
+        # Get team members
+        team_members = (
+            df["Assigned_To"]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        # Remove invalid names
+        team_members = [
+            member
+            for member in team_members
+            if member and member.lower() != "nan"
+        ]
+
+        dynamic_workload = {}
+
+        # ====================================================
+        # CALCULATE INITIAL WORKLOAD
+        # ====================================================
+
+        for member in team_members:
+
+            member_tasks = df[
+                df["Assigned_To"] == member
+            ]
+
+            estimated = 0
+            completed = 0
+
+            if "Estimated_Hours" in member_tasks.columns:
+
+                estimated = pd.to_numeric(
+                    member_tasks["Estimated_Hours"],
+                    errors="coerce"
+                ).fillna(0).sum()
+
+            if "Completed_Hours" in member_tasks.columns:
+
+                completed = pd.to_numeric(
+                    member_tasks["Completed_Hours"],
+                    errors="coerce"
+                ).fillna(0).sum()
+
+            remaining = max(
+                estimated - completed,
+                0
+            )
+
+            dynamic_workload[member] = float(
+                remaining
+            )
+
+    # ========================================================
+    # FIND MEMBER WITH LOWEST WORKLOAD
+    # ========================================================
+
+    recommended = min(
+        dynamic_workload,
+        key=dynamic_workload.get
+    )
+
+    # ========================================================
+    # SHOW CURRENT WORKLOAD
+    # ========================================================
+
+    print("\n===================================")
+    print("CURRENT TEAM WORKLOAD")
+    print("===================================")
+
+    for member, hours in sorted(
+        dynamic_workload.items(),
+        key=lambda x: x[1]
+    ):
+
+        print(
+            f"{member}: {hours:.2f} hours"
+        )
+
+    print(
+        f"\nRecommended Assignee: {recommended}"
+    )
+
+    # ========================================================
+    # ADD NEW TASK TO SELECTED MEMBER
+    # ========================================================
+
+    dynamic_workload[recommended] += float(
+        estimated_hours
+    )
+
+    print(
+        f"Assigned Task Hours: {estimated_hours:.2f}"
+    )
+
+    print(
+        f"Updated {recommended} Workload: "
+        f"{dynamic_workload[recommended]:.2f} hours"
+    )
+
+    print("===================================\n")
+
+    return recommended
+
+    # ---------------------------------------------------------
+    # Load dataset
+    # ---------------------------------------------------------
+
+    try:
+
+        df = pd.read_csv(dataset_path)
+
+    except Exception:
+
+        # Fallback team members
+        team_members = [
+            "Grace",
+            "Alice",
+            "Bob",
+            "David"
+        ]
+
+        return team_members[0]
+
+    # ---------------------------------------------------------
+    # Check required column
+    # ---------------------------------------------------------
+
+    if "Assigned_To" not in df.columns:
+
+        team_members = [
+            "Grace",
+            "Alice",
+            "Bob",
+            "David"
+        ]
+
+        return team_members[0]
+
+    # ---------------------------------------------------------
+    # Get team members
+    # ---------------------------------------------------------
+
+    team_members = (
+        df["Assigned_To"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .unique()
+        .tolist()
+    )
+
+    # Remove empty names
+
+    team_members = [
+        member
+        for member in team_members
+        if member
+    ]
+
+    if not team_members:
+
+        return "Unassigned"
+
+    # ---------------------------------------------------------
+    # Calculate workload
+    # ---------------------------------------------------------
+
+    workload = {}
+
+    for member in team_members:
+
+        member_tasks = df[
+            df["Assigned_To"].astype(str).str.strip()
+            == member
+        ]
+
+        # Estimated workload
+
+        if "Estimated_Hours" in member_tasks.columns:
+
+            estimated = pd.to_numeric(
+                member_tasks["Estimated_Hours"],
+                errors="coerce"
+            ).fillna(0).sum()
+
+        else:
+
+            estimated = 0
+
+
+        # Completed workload
+
+        if "Completed_Hours" in member_tasks.columns:
+
+            completed = pd.to_numeric(
+                member_tasks["Completed_Hours"],
+                errors="coerce"
+            ).fillna(0).sum()
+
+        else:
+
+            completed = 0
+
+
+        # Remaining workload
+
+        remaining = max(
+            estimated - completed,
+            0
+        )
+
+        workload[member] = remaining
+
+    # ---------------------------------------------------------
+    # Select person with lowest workload
+    # ---------------------------------------------------------
+
+    recommended = min(
+        workload,
+        key=workload.get
+    )
+
+    # ---------------------------------------------------------
+    # Display workload in terminal
+    # ---------------------------------------------------------
+
+    print("\nTEAM WORKLOAD")
+
+    for member, hours in sorted(
+        workload.items(),
+        key=lambda x: x[1]
+    ):
+
+        print(
+            f"{member}: {hours:.2f} hours"
+        )
+
+    print(
+        f"\nRecommended Assignee: {recommended}"
+    )
+
+    return recommended
 
     # --------------------------------------------------------
     # Find lowest workload
